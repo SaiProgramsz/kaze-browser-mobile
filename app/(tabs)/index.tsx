@@ -7,7 +7,7 @@ const HOME_URL ="google.com";
 
 export default function Browser() {
   const webviewRef = useRef<WebView>(null);
-
+  const [webViewKey, setWebViewKey] = useState(0); 
   const [url, setUrl] = useState(HOME_URL);
   const [input, setInput] = useState("");
   const [canBack, setCanBack] = useState(false);
@@ -74,6 +74,7 @@ export default function Browser() {
     setJsEnabled(true);
     setReader(false);
     setZoom(100);
+    setWebViewKey(prev => prev + 1);
   };
 
   return (
@@ -90,6 +91,7 @@ export default function Browser() {
 
       {/* WebView */}
       <WebView
+        key={webViewKey}
         ref={webviewRef}
         source={{ uri: url }}
         userAgent={desktop ? "Mozilla/5.0 (X11; Linux x86_64)" : undefined}
