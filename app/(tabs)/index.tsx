@@ -1,101 +1,133 @@
-import { useState } from "react";
-import { View, TextInput, StyleSheet, Pressable, Text } from "react-native";
+import React, { useRef, useState, useEffect } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { WebView } from "react-native-webview";
-import { useRef } from "react";
-import { Platform, StatusBar } from "react-native";
+import { SafeAreaView, StatusBar, Platform } from "react-native";
 
-const HOME_HTML = `
-<!DOCTYPE html>
-<html>
-<body style="
-  margin:0;
-  background:#0b0b0b;
-  color:white;
-  font-family:sans-serif;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  height:100vh">
-  <h1>Kaze Browser</h1>
-</body>
-</html>
-`;
+const HOME_URL = "file:///android_asset/index.html";
 
 export default function Browser() {
-  const webViewRef = useRef<WebView>(null);
+  const webviewRef = useRef<WebView>(null);
 
+  const [url, setUrl] = useState(HOME_URL);
   const [input, setInput] = useState("");
-  const [url, setUrl] = useState<string | null>(null);
-  const [canGoBack, setCanGoBack] = useState(false);
-  const [canGoForward, setCanGoForward] = useState(false);
+  const [canBack, setCanBack] = useState(false);
+  const [canForward, setCanForward] = useState(false);
+  const [loading, setLoading] = useState(false);
+	
+  const [desktop, setDesktop] = useState(false);
+  const [jsEnabled, setJsEnabled] = useState(true);
+  const [reader, setReader] = useState(false);
+  const [zoom, setZoom] = useState(100);
 
+  const [session, setSession] = useState(0);
+
+  // session timer
+  useEffect(() => {
+    const t = setInterval(() => setSession(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const inject = (js: string) => {
+    webviewRef.current?.injectJavaScript(js);
+  };
+
+  const readerJS = `
+    document.querySelectorAll('nav, header, footer, aside, ads, iframe').forEach(e => e.remove());
+    document.body.style.maxWidth = '700px';
+    document.body.style.margin = 'auto';
+    document.body.style.lineHeight = '1.6';
+    true;
+  `;
+
+  const zoomJS = `
+    document.body.style.fontSize='${zoom}%';
+    true;
+  `;
+
+  const findJS = (text: string) => `
+    const bodyText = document.body.innerHTML;
+    document.body.innerHTML = bodyText.replace(/${text}/gi, '<mark>$&</mark>');
+    true;
+  `;
   const go = () => {
-    const text = input.trim();
-    if (!text) return;
+  let text = input.trim();
 
-    const isUrl =
-      text.startsWith("http://") ||
-      text.startsWith("https://") ||
-      text.includes(".");
+  if (text === "") return;
 
-    if (isUrl) {
-      setUrl(text.startsWith("http") ? text : `https://${text}`);
-    } else {
-      setUrl(null); // back to home
-    }
+  // local asset shortcut
+  if (text === "home") {
+    setUrl(HOME_URL);
+    return;
+  }
+
+  // add https if missing
+  if (!text.includes("://")) {
+    text = "https://" + text;
+  }
+
+    setUrl(text);
+  };
+
+  const panic = () => {
+    setUrl(HOME_URL);
+    setDesktop(false);
+    setJsEnabled(true);
+    setReader(false);
+    setZoom(100);
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Address Bar */}
-      <View style={styles.bar}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          placeholder="Enter URL"
-          placeholderTextColor="#888"
-          style={styles.input}
-          autoCapitalize="none"
-          autoCorrect={false}
-          onSubmitEditing={go}
-        />
-        <Pressable onPress={go} style={styles.go}>
-          <Text style={{ color: "#fff" }}>Go</Text>
-        </Pressable>
-      </View>
+      <TextInput
+        style={styles.bar}
+        placeholder="Enter URL"
+        placeholderTextColor="#888"
+        value={input}
+        onChangeText={setInput}
+        onSubmitEditing={go}
+      />
 
       {/* WebView */}
       <WebView
-        ref={webViewRef}
-        source={url ? { uri: url } : { html: HOME_HTML }}
-        style={{ flex: 1 }}
-        onNavigationStateChange={(nav) => {
-          setCanGoBack(nav.canGoBack);
-          setCanGoForward(nav.canGoForward);
+        ref={webviewRef}
+        source={{ uri: url }}
+        userAgent={desktop ? "Mozilla/5.0 (X11; Linux x86_64)" : undefined}
+        javaScriptEnabled={jsEnabled}
+        onLoadProgress={e => setLoading(e.nativeEvent.progress < 1)}
+        onNavigationStateChange={nav => {
+          setCanBack(nav.canGoBack);
+          setCanForward(nav.canGoForward);
         }}
+        injectedJavaScript={`${reader ? readerJS : ""}${zoomJS}`}
       />
 
-      {/* Bottom Navigation */}
-      <View style={styles.nav}>
-        <Pressable
-          disabled={!canGoBack}
-          onPress={() => webViewRef.current?.goBack()}
-        >
-          <Text style={[styles.navText, !canGoBack && styles.disabled]}>
-            ◀
-          </Text>
-        </Pressable>
-
-        <Pressable
-          disabled={!canGoForward}
-          onPress={() => webViewRef.current?.goForward()}
-        >
-          <Text style={[styles.navText, !canGoForward && styles.disabled]}>
-            ▶
-          </Text>
-        </Pressable>
+      {/* Bottom Bar */}
+      <View style={styles.bottom}>
+        <Btn text="←" onPress={() => webviewRef.current?.goBack()} disabled={!canBack} />
+        <Btn text="→" onPress={() => webviewRef.current?.goForward()} disabled={!canForward} />
+        <Btn text={loading ? "✕" : "⟳"} onPress={() => loading ? webviewRef.current?.stopLoading() : webviewRef.current?.reload()} />
+        <Btn text="Aa+" onPress={() => setZoom(z => Math.min(z + 10, 150))} />
+        <Btn text="Aa-" onPress={() => setZoom(z => Math.max(z - 10, 80))} />
+        <Btn text="R" onPress={() => setReader(r => !r)} />
+        <Btn text="JS" onPress={() => setJsEnabled(j => !j)} />
+        <Btn text="PC" onPress={() => setDesktop(d => !d)} />
+        <Btn text="!" onPress={panic} />
       </View>
-    </View>
+
+      {/* Session indicator */}
+      <Text style={styles.session}>
+        Ephemeral Session: {Math.floor(session / 60)}:{String(session % 60).padStart(2, "0")}
+      </Text>
+    </SafeAreaView>
+  );
+}
+
+function Btn({ text, onPress, disabled = false }: any) {
+  return (
+    <TouchableOpacity onPress={onPress} disabled={disabled}>
+      <Text style={[styles.btn, disabled && { opacity: 0.3 }]}>{text}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -104,41 +136,23 @@ const styles = StyleSheet.create({
   flex: 1,
   backgroundColor: "#000",
   paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
-  },  
-
-
+  },
   bar: {
-    flexDirection: "row",
-    padding: 8,
+    padding: 10,
     backgroundColor: "#111",
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#1a1a1a",
     color: "#fff",
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    height: 40,
   },
-  go: {
-    marginLeft: 8,
-    backgroundColor: "#333",
-    paddingHorizontal: 14,
-    justifyContent: "center",
-    borderRadius: 6,
-  },
-  nav: {
-    height: 48,
-    backgroundColor: "#111",
+  bottom: {
     flexDirection: "row",
-    justifyContent: "space-evenly",
-    alignItems: "center",
+    justifyContent: "space-around",
+    backgroundColor: "#111",
+    paddingVertical: 8,
   },
-  navText: {
-    color: "#fff",
-    fontSize: 22,
-  },
-  disabled: {
-    opacity: 0.3,
+  btn: { color: "#fff", fontSize: 16 },
+  session: {
+    textAlign: "center",
+    color: "#666",
+    fontSize: 12,
+    padding: 4,
   },
 });
