@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-nativ
 import { WebView } from "react-native-webview";
 import { SafeAreaView, StatusBar, Platform } from "react-native";
 
-const HOME_URL = "file:///android_asset/index.html";
+const HOME_URL ="google.com";
 
 export default function Browser() {
   const webviewRef = useRef<WebView>(null);
